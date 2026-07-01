@@ -1,5 +1,3 @@
-
-
 # Nihar's Quiz/Test Generator — Complete App (file upload fixed)
 # Requirements: streamlit, python-dotenv, requests, beautifulsoup4, PyPDF2, python-docx, pandas, python-pptx, langchain_mistralai
 # Keep under ~500 lines
@@ -177,81 +175,162 @@ def generate_quiz_from_source(source_text, num_q, difficulty):
             "explanation": explanation
         })
         seen.add(qtext)
-    # ✅ Properly finished loop
+        # ✅ Properly finished loop
     while len(normalized) < num_q:
-        # Add fallback dummy questions if model output is insufficient
-        dummy_q_num = len(normalized) + 1
+        i = len(normalized) + 1
         normalized.append({
-            "id": f"Q{dummy_q_num}",
-            "question": f"Placeholder question {dummy_q_num}",
+            "id": f"Q{i}",
+            "question": f"Placeholder question {i} (model produced fewer questions).",
             "options": ["Option A", "Option B", "Option C", "Option D"],
-            "answer": "A",
-            "hint": "This is a placeholder hint.",
-            "explanation": "This is a placeholder explanation."
+            "answer": random.choice(["A", "B", "C", "D"]),
+            "hint": "Review the basic idea related to the topic.",
+            "explanation": "This is a placeholder explanation because the model did not provide enough questions."
         })
-
     return normalized
 
-# ---------------- UI ----------------
-
-# Source selection and input
-source_type = st.radio("Select source type:", ["Text", "File Upload", "URL"])
-source_text = ""
-
-if source_type == "Text":
-    source_text = st.text_area("Enter or paste text source:", height=150)
-elif source_type == "File Upload":
-    uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, TXT):")
-    if uploaded_file is not None:
-        source_text = safe_extract_text(uploaded_file)
-elif source_type == "URL":
-    url = st.text_input("Enter URL:")
-    if url:
-        source_text = safe_extract_url(url)
-
-# Number of questions and difficulty
-num_questions = st.slider("Number of questions:", 1, 20, 5)
-difficulty = st.selectbox("Select difficulty:", ["Easy", "Medium", "Hard"])
-
-# Generate button
-if st.button("Generate Quiz"):
-    if not source_text.strip():
-        st.warning("Please provide a valid source text.")
+# ---------------- Sidebar: source & settings ----------------
+with st.sidebar:
+    st.header("📂 Source")
+    source_type = st.radio("Choose source type:", ["Topic Name", "File Upload", "Website URL"])
+    source_text = ""
+    if source_type == "Topic Name":
+        source_text = st.text_input("Enter a topic/context:")
+    elif source_type == "File Upload":
+        uploaded_file = st.file_uploader("Upload a file", type=["pdf", "docx", "txt"])
+        if uploaded_file:
+            source_text = safe_extract_text(uploaded_file)
+            if source_text.strip():
+                st.caption("File parsed; using its content as source.")
+            else:
+                st.error("Uploaded file could not be parsed. Please check the format or content.")
     else:
-        st.session_state.questions = generate_quiz_from_source(source_text, num_questions, difficulty)
-        st.session_state.current_index = 0
-        st.session_state.finished = False
+        url = st.text_input("Enter a website URL:")
+        if url:
+            source_text = safe_extract_url(url)
+            st.caption("Website text extracted; using it as source.")
 
-# Display questions
+    st.header("⚙️ Test Settings")
+    num_q = st.selectbox("Number of Questions", [5, 10, 25, 50], index=0)
+    difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"], index=0)
+    ai_assist = st.checkbox("Enable AI Assistant (Hints)", value=True)
+
+    if st.button("🚀 Generate Test"):
+        if not source_text or len(source_text.strip()) < 10:
+            st.error("Please provide a valid topic, file, or URL with enough content.")
+        else:
+            st.session_state.questions = generate_quiz_from_source(source_text, num_q, difficulty)
+            st.session_state.current_index = 0
+            st.session_state.answers = {}
+            st.session_state.finished = False
+            st.session_state.last_result = None
+            st.session_state.test_history.append({
+                "source": source_type,
+                "difficulty": difficulty,
+                "num_q": num_q,
+                "preview": [q["question"] for q in st.session_state.questions[:3]]
+            })
+            st.success("Quiz generated — good luck!")
+
+# ---------------- Main quiz UI ----------------
 if st.session_state.questions:
-    q = st.session_state.questions[st.session_state.current_index]
-    st.markdown(f"### Question {st.session_state.current_index + 1}/{len(st.session_state.questions)}")
-    st.markdown(f"**{q['question']}**")
+    idx = st.session_state.current_index
+    total = len(st.session_state.questions)
+    qobj = st.session_state.questions[idx]
 
-    for letter, option in zip(["A", "B", "C", "D"], q["options"]):
-        st.markdown(f"- {letter}. {option}")
+    st.progress(idx / total)
 
-    with st.expander("Hint"):
-        st.write(q["hint"])
-    with st.expander("Explanation"):
-        st.write(q["explanation"])
+    safe_question_html = qobj['question'].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    st.markdown(
+        f"<div class='question-card'><div style='display:flex;justify-content:space-between;align-items:center'>"
+        f"<div><h4 style='margin:0'>Question {idx+1} of {total}</h4>"
+        f"<div class='small-muted'>ID: {qobj['id']}</div></div>"
+        f"<div><span class='badge'>{difficulty}</span></div></div>"
+        f"<div style='margin-top:12px; white-space:pre-wrap; line-height:1.4;'>{safe_question_html}</div></div>",
+        unsafe_allow_html=True
+    )
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("Previous") and st.session_state.current_index > 0:
-            st.session_state.current_index -= 1
-    with col2:
-        if st.button("Next") and st.session_state.current_index < len(st.session_state.questions) - 1:
-            st.session_state.current_index += 1
-    with col3:
-        if st.button("Finish"):
-            st.session_state.finished = True
+    option_letters = ["A", "B", "C", "D"]
+    radio_choices = [f"{letter}. {text}" for letter, text in zip(option_letters, qobj["options"])]
+    prev = st.session_state.answers.get(idx, None)
+    default_index = option_letters.index(prev) if prev in option_letters else 0
+    user_choice = st.radio("Choose your answer:", radio_choices, index=default_index, key=f"radio_{idx}")
+    selected_letter = user_choice.split(".", 1)[0].strip()
+    st.session_state.answers[idx] = selected_letter
 
-if st.session_state.finished:
-    st.markdown("### Quiz Finished! Thanks for participating.")
-    if st.session_state.answers:
-        st.markdown("Your answers:")
-        for qid, ans in st.session_state.answers.items():
-            st.markdown(f"- {qid}: {ans}")
+    cols = st.columns([1, 1, 1])
+    with cols[0]:
+        if st.button("⬅️ Prev", disabled=(idx == 0)):
+            st.session_state.current_index = max(0, idx - 1)
+    with cols[1]:
+        if ai_assist and st.button("💡 Hint"):
+            st.info(qobj.get("hint", "Try to recall the main concept behind the question."))
+    with cols[2]:
+        if st.button("➡️ Next", disabled=(idx == total - 1)):
+            st.session_state.current_index = min(total - 1, idx + 1)
 
-# End of app
+    if idx == total - 1:
+        all_answered = len(st.session_state.answers) == total
+        if not all_answered:
+            st.warning("Please answer all questions before submitting.")
+        else:
+            if st.button("✅ Submit Test"):
+                correct = 0
+                summary = []
+                for i, q in enumerate(st.session_state.questions):
+                    user_a = st.session_state.answers.get(i, "")
+                    correct_a = q["answer"]
+                    is_correct = user_a == correct_a
+                    if is_correct:
+                        correct += 1
+                    summary.append({
+                        "id": q["id"],
+                        "question": q["question"],
+                        "user": user_a,
+                        "correct": correct_a,
+                        "result": is_correct,
+                        "explanation": q.get("explanation", "No explanation provided.")
+                    })
+                wrong = total - correct
+                pct = round((correct / total) * 100, 1)
+                perf = "Excellent" if pct >= 85 else "Good" if pct >= 65 else "Average" if pct >= 40 else "Needs Improvement"
+                st.session_state.finished = True
+                st.session_state.last_result = {
+                    "total": total, "correct": correct, "wrong": wrong, "pct": pct, "perf": perf, "summary": summary
+                }
+
+# ---------------- Results dashboard ----------------
+if st.session_state.finished and st.session_state.last_result:
+    r = st.session_state.last_result
+    st.markdown("<div class='question-card'><h3>📊 Score Dashboard</h3></div>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Questions", r["total"])
+    c2.metric("Correct", r["correct"])
+    c3.metric("Wrong", r["wrong"])
+    c4.metric("Percentage", f"{r['pct']}%")
+    st.markdown(f"**Performance:** {r['perf']}")
+    st.markdown("---")
+    st.markdown("### Summary (with explanations)")
+    for s in r["summary"]:
+        mark = "✅" if s["result"] else "❌"
+        safe_q_html = s["question"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        st.markdown(f"<div style='white-space:pre-wrap; line-height:1.4;'><strong>{s['id']}</strong> — {safe_q_html}</div>", unsafe_allow_html=True)
+        st.markdown(f"- Your answer: **{s['user']}**  |  Correct: **{s['correct']}**  {mark}")
+        st.markdown(f"- **Explanation:** {s.get('explanation','No explanation provided.')}")
+        st.markdown("")
+    if st.button("🔁 Restart Quiz"):
+        st.session_state.questions = []
+        st.session_state.current_index = 0
+        st.session_state.answers = {}
+        st.session_state.finished = False
+        st.session_state.raw_quiz = ""
+        st.session_state.last_result = None
+
+# ---------------- Sidebar: history controls ----------------
+with st.sidebar:
+    st.header("📜 Test History")
+    for i, t in enumerate(st.session_state.test_history):
+        st.write(f"Test {i+1}: {t['source']} ({t['difficulty']}, {t['num_q']} Qs)")
+        if st.button(f"🗑️ Delete {i+1}", key=f"del_{i}"):
+            st.session_state.test_history.pop(i)
+    if st.button("🧹 Clear All History"):
+        st.session_state.test_history.clear()
