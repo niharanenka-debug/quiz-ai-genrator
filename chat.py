@@ -1,6 +1,5 @@
-# Nihar's Quiz/Test Generator — Complete App (file upload fixed)
+# Nihar's Quiz/Test Generator — Complete App (stable navigation + no auto-select)
 # Requirements: streamlit, python-dotenv, requests, beautifulsoup4, PyPDF2, python-docx, pandas, python-pptx, langchain_mistralai
-# Keep under ~500 lines
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -62,13 +61,11 @@ if "last_result" not in st.session_state:
 # ---------------- Helpers: extract text ----------------
 def safe_extract_text(uploaded_file):
     try:
-        # PDF files
         if uploaded_file.type == "application/pdf" or uploaded_file.name.endswith(".pdf"):
             import PyPDF2
             reader = PyPDF2.PdfReader(uploaded_file)
             return " ".join([p.extract_text() or "" for p in reader.pages])
 
-        # Word DOCX files
         if uploaded_file.type in [
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/msword"
@@ -77,17 +74,14 @@ def safe_extract_text(uploaded_file):
             doc = Document(uploaded_file)
             return " ".join([p.text for p in doc.paragraphs])
 
-        # Plain text files
         if uploaded_file.type == "text/plain" or uploaded_file.name.endswith(".txt"):
             return uploaded_file.read().decode("utf-8", errors="ignore")
 
-        # Fallback for other formats
         return uploaded_file.read().decode("utf-8", errors="ignore")
 
     except Exception as e:
         st.error(f"File parsing failed: {e}")
         return ""
-
 
 def safe_extract_url(url):
     try:
@@ -177,9 +171,9 @@ def generate_quiz_from_source(source_text, num_q, difficulty):
             "answer": new_letter,
             "hint": hint,
             "explanation": explanation
-        })
-        seen.add(qtext)
-        # ✅ Properly finished loop
+                seen.add(qtext)
+
+    # Add placeholders if not enough questions
     while len(normalized) < num_q:
         i = len(normalized) + 1
         normalized.append({
@@ -255,21 +249,28 @@ if st.session_state.questions:
 
     option_letters = ["A", "B", "C", "D"]
     radio_choices = [f"{letter}. {text}" for letter, text in zip(option_letters, qobj["options"])]
-    prev = st.session_state.answers.get(idx, None)
-    default_index = option_letters.index(prev) if prev in option_letters else 0
-    user_choice = st.radio("Choose your answer:", radio_choices, index=default_index, key=f"radio_{idx}")
-    selected_letter = user_choice.split(".", 1)[0].strip()
-    st.session_state.answers[idx] = selected_letter
+
+    # ✅ No default selection, unique key per question
+    user_choice = st.radio(
+        "Choose your answer:",
+        radio_choices,
+        index=None,
+        key=f"radio_{qobj['id']}"
+    )
+
+    if user_choice:
+        selected_letter = user_choice.split(".", 1)[0].strip()
+        st.session_state.answers[idx] = selected_letter
 
     cols = st.columns([1, 1, 1])
     with cols[0]:
-        if st.button("⬅️ Prev", disabled=(idx == 0)):
+        if st.button("⬅️ Prev", key=f"prev_{idx}", disabled=(idx == 0)):
             st.session_state.current_index = max(0, idx - 1)
     with cols[1]:
-        if ai_assist and st.button("💡 Hint"):
+        if ai_assist and st.button("💡 Hint", key=f"hint_{idx}"):
             st.info(qobj.get("hint", "Try to recall the main concept behind the question."))
     with cols[2]:
-        if st.button("➡️ Next", disabled=(idx == total - 1)):
+        if st.button("➡️ Next", key=f"next_{idx}", disabled=(idx == total - 1)):
             st.session_state.current_index = min(total - 1, idx + 1)
 
     if idx == total - 1:
