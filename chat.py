@@ -171,7 +171,7 @@ def generate_quiz_from_source(source_text, num_q, difficulty):
             "answer": new_letter,
             "hint": hint,
             "explanation": explanation
-                seen.add(qtext)
+                seen.add(qtext)})
 
     # Add placeholders if not enough questions
     while len(normalized) < num_q:
