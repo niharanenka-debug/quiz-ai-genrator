@@ -13,3 +13,4 @@ tiktoken
 fastapi
 uvicorn
 requests
+beautifulsoup4
