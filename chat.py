@@ -1,6 +1,4 @@
-You’re right — the code I sent earlier was cut off mid‑function, which caused the syntax error. Let me give you the full, complete version of your app, with the file upload fix included and no missing parts. You’ll be able to copy‑paste this directly and run it without errors.
 
-✅ Complete Fixed Code
 
 # Nihar's Quiz/Test Generator — Complete App (file upload fixed)
 # Requirements: streamlit, python-dotenv, requests, beautifulsoup4, PyPDF2, python-docx, pandas, python-pptx, langchain_mistralai
