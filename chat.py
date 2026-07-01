@@ -62,11 +62,13 @@ if "last_result" not in st.session_state:
 # ---------------- Helpers: extract text ----------------
 def safe_extract_text(uploaded_file):
     try:
+        # PDF files
         if uploaded_file.type == "application/pdf" or uploaded_file.name.endswith(".pdf"):
             import PyPDF2
             reader = PyPDF2.PdfReader(uploaded_file)
             return " ".join([p.extract_text() or "" for p in reader.pages])
 
+        # Word DOCX files
         if uploaded_file.type in [
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/msword"
@@ -75,15 +77,17 @@ def safe_extract_text(uploaded_file):
             doc = Document(uploaded_file)
             return " ".join([p.text for p in doc.paragraphs])
 
+        # Plain text files
         if uploaded_file.type == "text/plain" or uploaded_file.name.endswith(".txt"):
             return uploaded_file.read().decode("utf-8", errors="ignore")
 
-        # fallback for other formats
+        # Fallback for other formats
         return uploaded_file.read().decode("utf-8", errors="ignore")
 
     except Exception as e:
         st.error(f"File parsing failed: {e}")
         return ""
+
 
 def safe_extract_url(url):
     try:
